@@ -43,7 +43,15 @@ jobs:
       - name: Package as reproducible tarball
         run: |
           cd gamja/dist
-          GZIP=-n tar -czf ../../gamja-standalone-${{ steps.version.outputs.version }}.tar.gz --format=gnu --sort=name --mtime='@${{ steps.version.outputs.epoch }}' --owner=0 --group=0 --numeric-owner --pax-option=delete=atime,delete=ctime .
+          tar \
+            --format=pax \
+            --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime,delete=dev,delete=ino,delete=nlink \
+            --numeric-owner \
+            --owner=0 --group=0 \
+            --mtime='@${{ steps.version.outputs.epoch }}' \
+            --sort=name \
+            -cf - . \
+            | gzip --no-name > ../../gamja-standalone-${{ steps.version.outputs.version }}.tar.gz
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
