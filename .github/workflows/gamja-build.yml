@@ -1,0 +1,61 @@
+name: Build and Release Gamja Standalone
+
+# Clones Gamja from Codeberg and builds a production static distribution using GitHub Actions when manually triggered, eliminating the need to install Node.js on the target server.
+
+on:
+  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab.
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Clone Gamja from Codeberg
+        run: git clone --tags https://codeberg.org/emersion/gamja.git gamja
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: gamja/package-lock.json
+      - name: Install dependencies
+        working-directory: gamja
+        run: npm clean-install --include=dev
+      - name: Build production distribution
+        working-directory: gamja
+        run: npm run build
+      - name: Determine version
+        id: version
+        run: |
+          set -euxo pipefail
+          cd gamja
+          VERSION=$(git describe --long --tags --always)
+          SHA=$(git rev-parse HEAD)
+          EPOCH=$(git log -1 --format=%ct)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "epoch=$EPOCH" >> $GITHUB_OUTPUT
+      - name: Package as reproducible tarball
+        run: |
+          cd gamja/dist
+          GZIP=-n tar -czf ../../gamja-standalone-${{ steps.version.outputs.version }}.tar.gz --format=gnu --sort=name --mtime='@${{ steps.version.outputs.epoch }}' --owner=0 --group=0 --numeric-owner --pax-option=delete=atime,delete=ctime .
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gamja-build-${{ steps.version.outputs.version }}
+          overwrite_files: true
+          name: Gamja Standalone ${{ steps.version.outputs.version }}
+          body: |
+            Pre-built standalone distribution of the [gamja IRC web client](https://codeberg.org/emersion/gamja).
+
+            **Source commit:** `${{ steps.version.outputs.sha }}` (described as `${{ steps.version.outputs.version }}`)
+
+            Download the archive, extract it, and serve the static files with any web server (nginx, Caddy, Apache, lighttpd, etc.).
+
+            No Node.js or npm required on your server.
+          files: gamja-standalone-*.tar.gz
